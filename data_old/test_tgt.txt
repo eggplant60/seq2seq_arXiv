@@ -1,0 +1,100 @@
+Multiclass Learning with Simplex Coding
+Unsupervised Incremental Learning and Prediction of Music Signals
+The Future of Data Analysis in the Neurosciences
+Relaxed Sparse Eigenvalue Conditions for Sparse Estimation via Non-convex Regularized Regression
+Stochastic Dual Coordinate Ascent with Alternating Direction Multiplier Method
+Delayed acceptance ABC-SMC
+Building Machines That Learn and Think Like People
+Adaptive Neighboring Selection Algorithm Based on Curvature Prediction in Manifold Learning
+Fast Bayesian Feature Selection for High Dimensional Linear Regression in Genomics via the Ising Approximation
+Sampling Method for Fast Training of Support Vector Data Description
+Finite-Sample Analysis of Fixed-k Nearest Neighbor Density Functional Estimators
+A Hebbian/Anti-Hebbian Network Derived from Online Non-Negative Matrix Factorization Can Cluster and Discover Sparse Features
+Expanded Alternating Optimization of Nonconvex Functions with Applications to Matrix Factorization and Penalized Regression
+Incoherent Tensor Norms and Their Applications in Higher Order Tensor Completion
+Efficient Estimation of Compressible State-Space Models with Application to Calcium Signal Deconvolution
+Why is Differential Evolution Better than Grid Search for Tuning Defect Predictors ?
+Intrinsic Non-stationary Covariance Function for Climate Modeling
+The Landmark Selection Method for Multiple Output Prediction
+Batch-iFDD for Representation Expansion in Large MDPs
+A characterization of product-form exchangeable feature probability functions
+Automated Variational Inference in Probabilistic Programming
+Online Learning to Sample
+Explore no more : Improved high-probability regret bounds for non-stochastic bandits
+A simple squared-error reformulation for ordinal classification
+Predicting Regional Classification of Levantine Ivory Sculptures : A Machine Learning Approach
+A Proximal Stochastic Gradient Method with Progressive Variance Reduction
+Uniform Inference for High-dimensional Quantile Regression : Linear Functionals and Regression Rank Scores
+Stochastic inference with deterministic spiking neurons
+Proximal Quasi-Newton Methods for Regularized Convex Optimization with Linear and Accelerated Sublinear Convergence Rates
+A Basic Recurrent Neural Network Model
+Reliable Learning of Bernoulli Mixture Models
+Laplacian Prior Variational Automatic Relevance Determination for Transmission Tomography
+Analysis of Nuclear Norm Regularization for Full-rank Matrix Completion
+Generalised elastic nets
+Overcoming catastrophic forgetting in neural networks
+Advances in exact Bayesian structure discovery in Bayesian networks
+Building DNN Acoustic Models for Large Vocabulary Speech Recognition
+$l_0$-regularized Outlier Isolation and Regression
+Bayesian Decision Process for Cost-Efficient Dynamic Ranking via Crowdsourcing
+Multi-Task Multiple Kernel Relationship Learning
+Asymptotically Optimal Algorithms for Budgeted Multiple Play Bandits
+DGCNN : Disordered Graph Convolutional Neural Network Based on the Gaussian Mixture Model
+Discrete Distribution Estimation under Local Privacy
+Query Complexity of Derivative-Free Optimization
+Edit wars in Wikipedia
+A Comparison of Algorithms for Learning Hidden Variables in Normal Graphs
+Adaptive Clustering Using Kernel Density Estimators
+The Informed Sampler : A Discriminative Approach to Bayesian Inference in Generative Computer Vision Models
+Convergence of a Grassmannian Gradient Descent Algorithm for Subspace Estimation From Undersampled Data
+Z-Forcing : Training Stochastic Recurrent Networks
+Online Model Evaluation in a Large-Scale Computational Advertising Platform
+Streaming Weak Submodularity : Interpreting Neural Networks on the Fly
+Anti-spoofing Methods for Automatic SpeakerVerification System
+Auto-associative models , nonlinear Principal component analysis , manifolds and projection pursuit
+Large-scale Validation of Counterfactual Learning Methods : A Test-Bed
+A Note on Tight Lower Bound for MNL-Bandit Assortment Selection Models
+Elliptical slice sampling
+On Polynomial Time Methods for Exact Low Rank Tensor Completion
+A Practioner ' s Guide to Evaluating Entity Resolution Results
+Encoding Multi-Resolution Brain Networks Using Unsupervised Deep Learning
+Feature Selection with Conjunctions of Decision Stumps and Learning from Microarray Data
+Learning Manifolds with K-Means and K-Flats
+Prototypal Analysis and Prototypal Regression
+Bayesian Hypothesis Testing for Block Sparse Signal Recovery
+SOMz : photometric redshift PDFs with self organizing maps and random atlas
+Adaptive sequential Monte Carlo by means of mixture of experts
+0D Deep Learning for Biological Function Prediction from Physical Fields
+Joint Hierarchical Gaussian Process Model with Application to Forecast in Medical Monitoring
+Weight Initialization of Deep Neural Networks ( DNNs ) using Data Statistics
+Inferring Latent Structure From Mixed Real and Categorical Relational Data
+Parallel Stochastic Gradient Markov Chain Monte Carlo for Matrix Factorisation Models
+Grid Based Nonlinear Filtering Revisited : Recursive Estimation & Asymptotic Optimality
+Detecting early signs of depressive and manic episodes in patients with bipolar disorder using the signature-based model
+Ranking via Robust Binary Classification and Parallel Parameter Estimation in Large-Scale Data
+An Ensemble Classifier for Predicting the Onset of Type II Diabetes
+Improved Representation Learning for Predicting Commonsense Ontologies
+Learning Heteroscedastic Models by Convex Programming under Group Sparsity
+Advances in Boosting ( Invited Talk )
+Concept Drift Detection for Streaming Data
+Decoding visual stimuli in human brain by using Anatomical Pattern Analysis on fMRI images
+EEF : Exponentially Embedded Families with Class-Specific Features for Classification
+Boltzmann Machine Learning with the Latent Maximum Entropy Principle
+DNN-Buddies : A Deep Neural Network-Based Estimation Metric for the Jigsaw Puzzle Problem
+Combinatorial Topic Models using Small-Variance Asymptotics
+Monitoring Chinese Population Migration in Consecutive Weekly Basis from Intra-city scale to Inter-province scale by Didi ' s Bigdata
+Hierarchical learning of grids of microtopics
+Privacy Aware Learning
+Predicting online user behaviour using deep learning algorithms
+Towards a Unified Taxonomy of Biclustering Methods
+Generalized Kalman Smoothing : Modeling and Algorithms
+Adaptive Questionnaires for Direct Identification of Optimal Product Design
+CONQUER : Confusion Queried Online Bandit Learning
+The Z-loss : a shift and scale invariant classification loss belonging to the Spherical Family
+Does quantification without adjustments work ?
+Local stability of Belief Propagation algorithm with multiple fixed points
+The Artificial Regression Market
+A Rank-SVM Approach to Anomaly Detection
+Sparse Inverse Covariance Estimation for Chordal Structures
+Statistical Analysis of Persistence Intensity Functions
+The Group Lasso for Design of Experiments
