@@ -2,7 +2,8 @@
 
 dir='data_lstm_ae'
 
-./seq2seq.py -u 100 -t gru -l 3 -e 100 \
+./seq2seq.py -u 100 -t gru -l 3 -e 10 \
+	     --attention True \
 	     --direction uni \
 	     --dropout_rate 0.0 \
 	     --log-interval 1 \

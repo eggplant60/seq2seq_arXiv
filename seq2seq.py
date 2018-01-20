@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import argparse
 import os
@@ -34,35 +35,40 @@ def sequence_embed(embed, xs):
 
 class Seq2seq(chainer.Chain):
 
-    def __init__(self, n_layers, n_source_vocab, n_target_vocab, n_units, type_unit, dropout_rate, direc):
+    def __init__(self, n_layers, n_source_vocab, n_target_vocab, n_units,
+                 type_unit, dropout_rate, direc, attr):
         super(Seq2seq, self).__init__()
         with self.init_scope():
             self.embed_x = L.EmbedID(n_source_vocab, n_units)
             self.embed_y = L.EmbedID(n_target_vocab, n_units)
+            #self.attention = Attention(n_units)
             if type_unit == 'lstm':
                 if direc == 'uni':
-                    self.encoder = L.NStepLSTM(n_layers, n_units, n_units, 0.5)
-                    self.decoder = L.NStepLSTM(n_layers, n_units, n_units, 0.5)
+                    self.encoder = L.NStepLSTM(n_layers, n_units, n_units, 0.1)
+                    self.decoder = L.NStepLSTM(n_layers, n_units, n_units, 0.1)
                 elif direc == 'bi':
-                    self.encoder = L.NStepBiLSTM(n_layers, n_units, n_units, 0.5)
-                    self.decoder = L.NStepBiLSTM(n_layers, n_units, n_units, 0.5)
+                    self.encoder = L.NStepBiLSTM(n_layers, n_units, n_units, 0.1)
+                    self.decoder = L.NStepBiLSTM(n_layers, n_units, n_units, 0.1)
             elif type_unit == 'gru':
                 if direc == 'uni':
-                    self.encoder = L.NStepGRU(n_layers, n_units, n_units, 0.5)
-                    self.decoder = L.NStepGRU(n_layers, n_units, n_units, 0.5)
+                    self.encoder = L.NStepGRU(n_layers, n_units, n_units, 0.1)
+                    self.decoder = L.NStepGRU(n_layers, n_units, n_units, 0.1)
                 elif direc == 'bi':
-                    self.encoder = L.NStepBiGRU(n_layers, n_units, n_units, 0.5)
-                    self.decoder = L.NStepBiGRU(n_layers, n_units, n_units, 0.5)
+                    self.encoder = L.NStepBiGRU(n_layers, n_units, n_units, 0.1)
+                    self.decoder = L.NStepBiGRU(n_layers, n_units, n_units, 0.1)
             if direc == 'uni':
                 self.W = L.Linear(n_units, n_target_vocab)
             elif direc == 'bi':
                 self.W = L.Linear(2*n_units, n_target_vocab)
-
+            if attr:
+                self.Wc = L.Linear(2*n_units, n_units)
 
         self.n_layers = n_layers
         self.n_units = n_units
         self.type_unit = type_unit
         self.dropout_rate = dropout_rate
+        self.attr = attr
+        
 
     def __call__(self, xs, ys):
         xs = [x[::-1] for x in xs]
@@ -80,18 +86,34 @@ class Seq2seq(chainer.Chain):
         batch = len(xs)
         # None represents a zero vector in an encoder.
         if self.type_unit == 'lstm':
-            hx, cx, _ = self.encoder(None, None, exs)
+            hx, cx, at = self.encoder(None, None, exs)
             _, _, os = self.decoder(hx, cx, eys)
         elif self.type_unit == 'gru':
-            hx, _ = self.encoder(None, exs)
+            hx, at = self.encoder(None, exs)
             _, os = self.decoder(hx, eys)
-            
+
+        # os: batch_size x len_of_sentence x hiddensize
+        # at is same
+        # print(len(hx))
+        # print(hx[0].shape)
+        # print(len(at))
+        # print(at[0].shape)
+        
         # It is faster to concatenate data before calculating loss
         # because only one matrix multiplication is called.
+        concat_at = F.concat(at, axis=0)
         concat_os = F.concat(os, axis=0)
         concat_ys_out = F.concat(ys_out, axis=0)
+
+        # Attention
+        if self.attr:
+            concat_os_new = self._calculate_attention_layer_output(concat_os, concat_at)
+        else:
+            concat_os_new = concat_os
+
+        # Calcurate Loss
         loss = F.sum(F.softmax_cross_entropy(
-            self.W(concat_os), concat_ys_out, reduce='no')) / batch
+            self.W(concat_os_new), concat_ys_out, reduce='no')) / batch
 
         chainer.report({'loss': loss.data}, self)
         n_words = concat_ys_out.shape[0]
@@ -99,6 +121,15 @@ class Seq2seq(chainer.Chain):
         chainer.report({'perp': perp}, self)
         return loss
 
+
+    def _calculate_attention_layer_output(self, c_os, c_at):
+        inner_prod = F.matmul(c_os, c_at, transb=True) # 第2引数を転地
+        weights = F.softmax(inner_prod)
+        contexts = F.matmul(weights, c_at)
+        concatenated = F.concat((contexts, c_os))
+        new_embedded_output = F.tanh(self.Wc(concatenated))
+        return new_embedded_output
+    
     
     def denoiseInput(self, y):  ###WordDropOut
         if self.dropout_rate > 0.0:
@@ -116,9 +147,9 @@ class Seq2seq(chainer.Chain):
             xs = [x[::-1] for x in xs]
             exs = sequence_embed(self.embed_x, xs)
             if self.type_unit == 'lstm':
-                h, c, _ = self.encoder(None, None, exs)
+                h, c, a = self.encoder(None, None, exs)
             elif self.type_unit == 'gru':
-                h, _ = self.encoder(None, exs)
+                h, a = self.encoder(None, exs)
             ys = self.xp.full(batch, EOS, 'i')
             result = []
             for i in range(max_length):
@@ -128,8 +159,15 @@ class Seq2seq(chainer.Chain):
                     h, c, ys = self.decoder(h, c, eys)                
                 elif self.type_unit == 'gru':
                     h, ys = self.decoder(h, eys)
+                ca = F.concat(a, axis=0)
                 cys = F.concat(ys, axis=0)
-                wy = self.W(cys)
+                
+                # Attention
+                if self.attr:
+                    cys_new = self._calculate_attention_layer_output(cys, ca)
+                else:
+                    cys_new = cys
+                wy = self.W(cys_new)
                 ys = self.xp.argmax(wy.data, axis=1).astype('i')
                 result.append(ys)
 
@@ -281,6 +319,7 @@ def main():
                         'with validation dataset')
     parser.add_argument('--dropout_rate', '-d', type=float, default=0.3)
     parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: alpha version
+    parser.add_argument('--attention', '-a', type=bool, default=False)
     args = parser.parse_args()
 
 
@@ -310,7 +349,7 @@ def main():
     source_words = {i: w for w, i in source_ids.items()}
 
     model = Seq2seq(args.layer, len(source_ids), len(target_ids), \
-                    args.unit, args.type_unit, args.dropout_rate, args.direction)
+                    args.unit, args.type_unit, args.dropout_rate, args.direction, args.attention)
     if args.gpu >= 0:
         chainer.cuda.get_device(args.gpu).use()
         model.to_gpu(args.gpu)
@@ -328,6 +367,9 @@ def main():
         ['epoch', 'iteration', 'main/loss', 'main/perp',
          'bleu', 'rouge', 'f', 'elapsed_time']),
         trigger=(args.log_interval, 'iteration'))
+    trainer.extend(extensions.snapshot_object(
+        model, 'model_iter_{.updater.iteration}.npz'),
+        trigger=(5, 'epoch'))
 
     if args.validation_source and args.validation_target:
         test_source = load_data(source_ids, args.validation_source)
