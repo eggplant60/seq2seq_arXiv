@@ -9,8 +9,7 @@ dir='data_lstm_ae'
 	     --log-interval 1 \
 	     --validation-interval 2 \
 	     --max-source-sentence 300 \
-	     --validation-source $dir/mini_title.txt \
-	     --validation-target $dir/mini_title.txt \
-	     $dir/mini_title.txt $dir/mini_title.txt \
+	     --validation-source $dir/test_title.txt.mini \
+	     --validation-target $dir/test_title.txt.mini \
+	     $dir/test_title.txt.mini $dir/test_title.txt.mini \
 	     $dir/train_title.vocab $dir/train_title.vocab
-

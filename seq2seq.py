@@ -185,6 +185,20 @@ class Seq2seq(chainer.Chain):
             outs.append(y)
         return outs
 
+    
+    def out_vector(self, xs):
+        batch = len(xs)
+        with chainer.no_backprop_mode(), chainer.using_config('train', False):
+            xs = [x[::-1] for x in xs]
+            exs = sequence_embed(self.embed_x, xs)
+            if self.type_unit == 'lstm':
+                vectors, _, _ = self.encoder(None, None, exs)
+            elif self.type_unit == 'gru':
+                vectors, _ = self.encoder(None, exs)
+                
+        h = F.concat(vectors, axis=1)
+        return h.data
+
 
 def convert(batch, device):
     def to_device_batch(batch):
@@ -407,6 +421,16 @@ def main():
                 model, test_data, ['bleu', 'rouge', 'f'], device=args.gpu),
             trigger=(args.validation_interval, 'iteration'))
 
+    if args.resume:
+        serializers.load_npz(args.resume, model)
+
+    # # save vector
+    # sources = test_source[0]
+    # vector = model.out_vector([model.xp.array(sources)])
+    # print(vector.shape)
+    # print(vector)
+    # return None
+    
     print('start training')
     trainer.run()
 
@@ -414,6 +438,7 @@ def main():
         asi = ['{}: {}'.format(i, getattr(args, i)) for i in dir(args) if not '_' in i[0]]
         f.write('\n'.join(asi))
     serializers.save_npz('result/model.npz', model)
+
     
 if __name__ == '__main__':
     main()
