@@ -5,7 +5,7 @@ import argparse
 import os
 import json
 
-#from nltk.translate import bleu_score
+from nltk.translate import bleu_score
 from rouge import Rouge
 import numpy
 import progressbar
@@ -36,7 +36,7 @@ def sequence_embed(embed, xs):
 class Seq2seq(chainer.Chain):
 
     def __init__(self, n_layers, n_source_vocab, n_target_vocab, n_units,
-                 type_unit, dropout_rate, direc, attr):
+                 type_unit, word_dropout, denoising_rate, direc, attr):
         super(Seq2seq, self).__init__()
         with self.init_scope():
             self.embed_x = L.EmbedID(n_source_vocab, n_units)
@@ -66,17 +66,18 @@ class Seq2seq(chainer.Chain):
         self.n_layers = n_layers
         self.n_units = n_units
         self.type_unit = type_unit
-        self.dropout_rate = dropout_rate
+        self.word_dropout = word_dropout
+        self.denoising_rate = denoising_rate
         self.attr = attr
         
 
     def __call__(self, xs, ys):
-        xs = [x[::-1] for x in xs]
-
         eos = self.xp.array([EOS], 'i')
         
-        ys_drop = [self.denoiseInput(y) for y in ys]
-        ys_in = [F.concat([eos, y], axis=0) for y in ys_drop]
+        xs = [self.denoiseInput(x[::-1], self.denoising_rate) for x in xs]
+
+        ys_d = [self.denoiseInput(y, self.word_dropout) for y in ys] # word dropout
+        ys_in = [F.concat([eos, y], axis=0) for y in ys_d]
         ys_out = [F.concat([y, eos], axis=0) for y in ys]
 
         # Both xs and ys_in are lists of arrays.
@@ -131,12 +132,11 @@ class Seq2seq(chainer.Chain):
         return new_embedded_output
     
     
-    def denoiseInput(self, y):  ###WordDropOut
-        if self.dropout_rate > 0.0:
+    def denoiseInput(self, y, rate): # Word dropout or denoising AutoEncoder
+        if rate > 0.0:
             unk = self.xp.array([UNK], 'i')
-
             for i in range(len(y)):
-                if random.rand() < self.dropout_rate:
+                if random.rand() < rate:
                     y[i] = unk
         return y
 
@@ -152,7 +152,7 @@ class Seq2seq(chainer.Chain):
                 h, a = self.encoder(None, exs)
             ys = self.xp.full(batch, EOS, 'i')
             result = []
-            for i in range(max_length):
+            for i in range(max_length): # 学習のときとは異なり、1語ずつ計算
                 eys = self.embed_y(ys)
                 eys = F.split_axis(eys, batch, 0)
                 if self.type_unit == 'lstm':
@@ -186,20 +186,6 @@ class Seq2seq(chainer.Chain):
         return outs
 
     
-    def out_vector(self, xs):
-        batch = len(xs)
-        with chainer.no_backprop_mode(), chainer.using_config('train', False):
-            xs = [x[::-1] for x in xs]
-            exs = sequence_embed(self.embed_x, xs)
-            if self.type_unit == 'lstm':
-                vectors, _, _ = self.encoder(None, None, exs)
-            elif self.type_unit == 'gru':
-                vectors, _ = self.encoder(None, exs)
-                
-        h = F.concat(vectors, axis=1)
-        return h.data
-
-
 def convert(batch, device):
     def to_device_batch(batch):
         if device is None:
@@ -231,6 +217,40 @@ class CalculateBleu(chainer.training.Extension):
         self.batch = batch
         self.device = device
         self.max_length = max_length
+
+    def __call__(self, trainer):
+        with chainer.no_backprop_mode():
+            references = []
+            hypotheses = []
+            for i in range(0, len(self.test_data), self.batch):
+                sources, targets = zip(*self.test_data[i:i + self.batch])
+                references.extend([[t.tolist()] for t in targets])
+
+                sources = [
+                    chainer.dataset.to_device(self.device, x) for x in sources]
+                ys = [y.tolist()
+                      for y in self.model.translate(sources, self.max_length)]
+                hypotheses.extend(ys)
+
+        bleu = bleu_score.corpus_bleu(
+            references, hypotheses,
+            smoothing_function=bleu_score.SmoothingFunction().method1)
+        chainer.report({self.key: bleu})
+
+        
+class CalculateRouge(chainer.training.Extension):
+
+    trigger = 1, 'epoch'
+    priority = chainer.training.PRIORITY_WRITER
+
+    def __init__(
+            self, model, test_data, key, batch=100, device=-1, max_length=100):
+        self.model = model
+        self.test_data = test_data
+        self.key = key
+        self.batch = batch
+        self.device = device
+        self.max_length = max_length
         self.rouge = Rouge()
 
     def __call__(self, trainer):
@@ -239,28 +259,21 @@ class CalculateBleu(chainer.training.Extension):
             hypotheses = []
             for i in range(0, len(self.test_data), self.batch):
                 sources, targets = zip(*self.test_data[i:i + self.batch])
-                #references.extend([[t.tolist()] for t in targets])
                 references.extend([' '.join(map(str, t.tolist())) for t in targets])
 
                 sources = [
                     chainer.dataset.to_device(self.device, x) for x in sources]
-                # ys = [y.tolist()
-                #       for y in self.model.translate(sources, self.max_length)]
                 ys = [' '.join(map(str, y.tolist()))
                       for y in self.model.translate(sources, self.max_length)]
                 hypotheses.extend(ys)
 
-        # bleu = bleu_score.corpus_bleu(
-        #     references, hypotheses,
-        #     smoothing_function=bleu_score.SmoothingFunction().method1)
-        # chainer.report({self.key: bleu})
         scores = self.rouge.get_scores(hypotheses, references, avg=True)
         rouge_l = scores["rouge-l"]
         chainer.report({self.key[0]: rouge_l["p"]})
         chainer.report({self.key[1]: rouge_l["r"]})
         chainer.report({self.key[2]: rouge_l["f"]})
 
-
+        
 def count_lines(path):
     with open(path) as f:
         return sum([1 for _ in f])
@@ -331,8 +344,9 @@ def main():
     parser.add_argument('--validation-interval', type=int, default=1000,
                         help='number of iteration to evlauate the model '
                         'with validation dataset')
-    parser.add_argument('--dropout_rate', '-d', type=float, default=0.3)
-    parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: alpha version
+    parser.add_argument('--word_dropout', '-w', type=float, default=0.0)
+    parser.add_argument('--denoising_rate', '-d', type=float, default=0.0)
+    parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: doesn't work...
     parser.add_argument('--attention', '-a', type=bool, default=False)
     args = parser.parse_args()
 
@@ -362,8 +376,9 @@ def main():
     target_words = {i: w for w, i in target_ids.items()}
     source_words = {i: w for w, i in source_ids.items()}
 
-    model = Seq2seq(args.layer, len(source_ids), len(target_ids), \
-                    args.unit, args.type_unit, args.dropout_rate, args.direction, args.attention)
+    model = Seq2seq(args.layer, len(source_ids), len(target_ids), args.unit,
+                    args.type_unit, args.word_dropout,
+                    args.denoising_rate, args.direction, args.attention)
     if args.gpu >= 0:
         chainer.cuda.get_device(args.gpu).use()
         model.to_gpu(args.gpu)
@@ -379,7 +394,7 @@ def main():
         trigger=(args.log_interval, 'iteration')))
     trainer.extend(extensions.PrintReport(
         ['epoch', 'iteration', 'main/loss', 'main/perp',
-         'bleu', 'rouge', 'f', 'elapsed_time']),
+         'bleu', 'p', 'r', 'f', 'elapsed_time']),
         trigger=(args.log_interval, 'iteration'))
     trainer.extend(extensions.snapshot_object(
         model, 'model_iter_{.updater.iteration}.npz'),
@@ -418,7 +433,11 @@ def main():
             translate, trigger=(args.validation_interval, 'iteration'))
         trainer.extend(
             CalculateBleu(
-                model, test_data, ['bleu', 'rouge', 'f'], device=args.gpu),
+                model, test_data, 'bleu', device=args.gpu),
+            trigger=(args.validation_interval, 'iteration'))
+        trainer.extend(
+            CalculateRouge(
+                model, test_data, ['p', 'r', 'f'], device=args.gpu),
             trigger=(args.validation_interval, 'iteration'))
 
     if args.resume:

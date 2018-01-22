@@ -3,7 +3,8 @@
 dir='data_seq2seq'
 
 ./seq2seq.py -u 200 -t gru -l 3 -e 50 \
-	     --dropout_rate 0.0 \
+	     --word_dropout 0.0 \
+	     --denoising_rate 0.0 \
 	     --direction uni \
 	     --attention True \
 	     --max-source-sentence 200 \
