@@ -442,22 +442,20 @@ def main():
 
     if args.resume:
         serializers.load_npz(args.resume, model)
-
-    # # save vector
-    # sources = test_source[0]
-    # vector = model.out_vector([model.xp.array(sources)])
-    # print(vector.shape)
-    # print(vector)
-    # return None
     
     print('start training')
     trainer.run()
+    print('complete training')
 
     with open('result/args.txt', 'w') as f:
-        asi = ['{}: {}'.format(i, getattr(args, i)) for i in dir(args) if not '_' in i[0]]
-        f.write('\n'.join(asi))
+        args_dict = {}
+        for i in dir(args):
+            if '_' in i[0]: continue
+            args_dict[str(i)] = getattr(args, i)
+        json.dump(args_dict, f, ensure_ascii=False,
+                  indent=4, sort_keys=True, separators=(',', ': '))
+        
     serializers.save_npz('result/model.npz', model)
-
     
 if __name__ == '__main__':
     main()

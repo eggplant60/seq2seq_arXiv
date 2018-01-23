@@ -3,6 +3,8 @@
 
 import argparse
 import pickle
+import os
+from pprint import pprint
 
 from chainer.cuda import to_cpu
 
@@ -28,64 +30,57 @@ class Seq2seq_ride(Seq2seq):
 
 def main():
     parser = argparse.ArgumentParser(description='Chainer example: seq2seq')
-    # parser.add_argument('SOURCE', help='source sentence list')
-    # parser.add_argument('TARGET', help='target sentence list')
-    parser.add_argument('SOURCE_VOCAB', help='source vocabulary file')
-    parser.add_argument('TARGET_VOCAB', help='target vocabulary file')
-    parser.add_argument('--validation-source',
-                        help='source sentence list for validation')
-    parser.add_argument('--validation-target',
-                        help='target sentence list for validation')
-    # parser.add_argument('--batchsize', '-b', type=int, default=50,
-    #                     help='number of sentence pairs in each mini-batch')
-    # parser.add_argument('--epoch', '-e', type=int, default=100,
-    #                     help='number of sweeps over the dataset to train')
-    parser.add_argument('--gpu', '-g', type=int, default=0,
-                        help='GPU ID (negative value indicates CPU)')
-    parser.add_argument('--resume', '-r', default='',
-                        help='resume the training from snapshot')
-    parser.add_argument('--unit', '-u', type=int, default=1024,
-                        help='number of units')
-    parser.add_argument('--type_unit', '-t', choices={'lstm', 'gru'},
-                        help='number of units')
-    parser.add_argument('--layer', '-l', type=int, default=3,
-                        help='number of layers')
-    parser.add_argument('--min-source-sentence', type=int, default=2, # for caluculation of ngram 2
-                        help='minimium length of source sentence')
-    parser.add_argument('--max-source-sentence', type=int, default=500,
-                        help='maximum length of source sentence')
-    parser.add_argument('--min-target-sentence', type=int, default=2, # for caluculation of ngram 2
-                        help='minimium length of target sentence')
-    parser.add_argument('--max-target-sentence', type=int, default=50,
-                        help='maximum length of target sentence')
-    # parser.add_argument('--log-interval', type=int, default=200,
-    #                     help='number of iteration to show log')
-    # parser.add_argument('--validation-interval', type=int, default=1000,
-    #                     help='number of iteration to evlauate the model '
-    #                     'with validation dataset')
-    parser.add_argument('--word_dropout', '-w', type=float, default=0.0)
-    parser.add_argument('--denoising_rate', '-d', type=float, default=0.0)
-    parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: doesn't work...
-    parser.add_argument('--attention', '-a', type=bool, default=False)
+    # parser.add_argument('SOURCE_VOCAB', help='source vocabulary file')
+    # parser.add_argument('TARGET_VOCAB', help='target vocabulary file')
+    # parser.add_argument('--validation-source',
+    #                     help='source sentence list for validation')
+    # parser.add_argument('--validation-target',
+    #                     help='target sentence list for validation')
+    # parser.add_argument('--gpu', '-g', type=int, default=0,
+    #                     help='GPU ID (negative value indicates CPU)')
+    # parser.add_argument('--resume', '-r', default='',
+    #                     help='resume the training from snapshot')
+    # parser.add_argument('--unit', '-u', type=int, default=1024,
+    #                     help='number of units')
+    # parser.add_argument('--type_unit', '-t', choices={'lstm', 'gru'},
+    #                     help='number of units')
+    # parser.add_argument('--layer', '-l', type=int, default=3,
+    #                     help='number of layers')
+    # parser.add_argument('--min-source-sentence', type=int, default=2, # for caluculation of ngram 2
+    #                     help='minimium length of source sentence')
+    # parser.add_argument('--max-source-sentence', type=int, default=500,
+    #                     help='maximum length of source sentence')
+    # parser.add_argument('--min-target-sentence', type=int, default=2, # for caluculation of ngram 2
+    #                     help='minimium length of target sentence')
+    # parser.add_argument('--max-target-sentence', type=int, default=50,
+    #                     help='maximum length of target sentence')
+    # parser.add_argument('--word_dropout', '-w', type=float, default=0.0)
+    # parser.add_argument('--denoising_rate', '-d', type=float, default=0.0)
+    # parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: doesn't work...
+    # parser.add_argument('--attention', '-a', type=bool, default=False)
+    parser.add_argument('--result_dir', type=str, default='result', required=True)
     args = parser.parse_args()
 
-
-    source_ids = load_vocabulary(args.SOURCE_VOCAB)
-    target_ids = load_vocabulary(args.TARGET_VOCAB)
-
-    model = Seq2seq_ride(args.layer, len(source_ids), len(target_ids), args.unit,
-                         args.type_unit, args.word_dropout,
-                         args.denoising_rate, args.direction, args.attention)
-    
-    if args.gpu >= 0:
-        chainer.cuda.get_device(args.gpu).use()
-        model.to_gpu(args.gpu)
+    with open(os.path.join(args.result_dir, 'args.txt'), 'r') as f:
+        args_i = json.load(f)
+    pprint(args_i)
         
-    if args.resume:
-        serializers.load_npz(args.resume, model)
+    source_ids = load_vocabulary(args_i['SOURCE_VOCAB'])
+    target_ids = load_vocabulary(args_i['TARGET_VOCAB'])
 
-    test_source = load_data(source_ids, args.validation_source)
-    test_target = load_data(target_ids, args.validation_target)
+    model = Seq2seq_ride(args_i['layer'], len(source_ids), len(target_ids), args_i['unit'],
+                         args_i['type_unit'], args_i['word_dropout'],
+                         args_i['denoising_rate'], args_i['direction'], args_i['attention'])
+    
+    if args_i['gpu'] >= 0:
+        chainer.cuda.get_device(args_i['gpu']).use()
+        model.to_gpu(args_i['gpu'])
+        
+    if args_i['resume']:
+        serializers.load_npz(args_i['resume'], model)
+
+    test_source = load_data(source_ids, args_i['validation_source'])
+    test_target = load_data(target_ids, args_i['validation_target'])
     assert len(test_source) == len(test_target)
     test_data = list(six.moves.zip(test_source, test_target))
     test_data = [(s, t) for s, t in test_data if 0 < len(s) and 0 < len(t)]
@@ -105,7 +100,7 @@ def main():
     vector = model.out_vector(xs)
     print(vector)
 
-    pkl_file = 'vector.pkl'
+    pkl_file = os.path.join(args.result_dir, 'vector.pkl')
     
     with open(pkl_file, 'wb') as f:
         pickle.dump(vector, f)
