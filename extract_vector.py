@@ -30,39 +30,19 @@ class Seq2seq_ride(Seq2seq):
 
 def main():
     parser = argparse.ArgumentParser(description='Chainer example: seq2seq')
-    # parser.add_argument('SOURCE_VOCAB', help='source vocabulary file')
-    # parser.add_argument('TARGET_VOCAB', help='target vocabulary file')
-    # parser.add_argument('--validation-source',
-    #                     help='source sentence list for validation')
-    # parser.add_argument('--validation-target',
-    #                     help='target sentence list for validation')
-    # parser.add_argument('--gpu', '-g', type=int, default=0,
-    #                     help='GPU ID (negative value indicates CPU)')
-    # parser.add_argument('--resume', '-r', default='',
-    #                     help='resume the training from snapshot')
-    # parser.add_argument('--unit', '-u', type=int, default=1024,
-    #                     help='number of units')
-    # parser.add_argument('--type_unit', '-t', choices={'lstm', 'gru'},
-    #                     help='number of units')
-    # parser.add_argument('--layer', '-l', type=int, default=3,
-    #                     help='number of layers')
-    # parser.add_argument('--min-source-sentence', type=int, default=2, # for caluculation of ngram 2
-    #                     help='minimium length of source sentence')
-    # parser.add_argument('--max-source-sentence', type=int, default=500,
-    #                     help='maximum length of source sentence')
-    # parser.add_argument('--min-target-sentence', type=int, default=2, # for caluculation of ngram 2
-    #                     help='minimium length of target sentence')
-    # parser.add_argument('--max-target-sentence', type=int, default=50,
-    #                     help='maximum length of target sentence')
-    # parser.add_argument('--word_dropout', '-w', type=float, default=0.0)
-    # parser.add_argument('--denoising_rate', '-d', type=float, default=0.0)
-    # parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: doesn't work...
-    # parser.add_argument('--attention', '-a', type=bool, default=False)
-    parser.add_argument('--result_dir', type=str, default='result', required=True)
+    parser.add_argument('--test_data', type=str, default=None)
+    parser.add_argument('--result_dir', type=str, required=True)
     args = parser.parse_args()
 
     with open(os.path.join(args.result_dir, 'args.txt'), 'r') as f:
         args_i = json.load(f)
+
+    if args.test_data: # over write
+        args_i['validation_source'] = args.test_data
+        args_i['validation_target'] = args.test_data
+
+    args_i['resume'] = os.path.join(args.result_dir, 'model.npz')
+        
     pprint(args_i)
         
     source_ids = load_vocabulary(args_i['SOURCE_VOCAB'])

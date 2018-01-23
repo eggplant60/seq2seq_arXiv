@@ -3,7 +3,6 @@
 dir='data_categ'
 
 ./seq2seq.py -u 100 -t gru -l 3 -e 50 \
-	     -r result/model_iter_27588.npz \
 	     --word_dropout 0.2 \
 	     --denoising_rate 0.2 \
 	     --direction uni \
