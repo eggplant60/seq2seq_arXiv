@@ -35,48 +35,40 @@ def sequence_embed(embed, xs):
 
 class Seq2seq(chainer.Chain):
 
-    def __init__(self, n_layers, n_source_vocab, n_target_vocab, n_units,
-                 type_unit, word_dropout, denoising_rate, direc, attr, loss_type):
+    def __init__(self, n_layers, n_source_vocab, n_target_vocab,
+                 n_embed, n_units, n_latent,
+                 type_unit, word_dropout, denoising_rate):
         super(Seq2seq, self).__init__()
         with self.init_scope():
-            self.embed_x = L.EmbedID(n_source_vocab, n_units)
-            self.embed_y = L.EmbedID(n_target_vocab, n_units)
-            #self.attention = Attention(n_units)
-            if type_unit == 'lstm':
-                if direc == 'uni':
-                    self.encoder = L.NStepLSTM(n_layers, n_units, n_units, 0.1)
-                    self.decoder = L.NStepLSTM(n_layers, n_units, n_units, 0.1)
-                elif direc == 'bi':
-                    self.encoder = L.NStepBiLSTM(n_layers, n_units, n_units, 0.1)
-                    self.decoder = L.NStepBiLSTM(n_layers, n_units, n_units, 0.1)
-            elif type_unit == 'gru':
-                if direc == 'uni':
-                    self.encoder = L.NStepGRU(n_layers, n_units, n_units, 0.1)
-                    self.decoder = L.NStepGRU(n_layers, n_units, n_units, 0.1)
-                elif direc == 'bi':
-                    self.encoder = L.NStepBiGRU(n_layers, n_units, n_units, 0.1)
-                    self.decoder = L.NStepBiGRU(n_layers, n_units, n_units, 0.1)
-            if direc == 'uni':
-                self.W = L.Linear(n_units, n_target_vocab)
-            elif direc == 'bi':
-                self.W = L.Linear(2*n_units, n_target_vocab)
-            if attr:
-                self.Wc = L.Linear(2*n_units, n_units)
+            self.embed_x = L.EmbedID(n_source_vocab, n_embed)
+            self.encoder = L.NStepGRU(n_layers, n_embed, n_units, 0.5)
+            self.W_mu = L.Linear(n_units * n_layers, n_latent)
+            self.W_ln_var = L.Linear(n_units * n_layers, n_latent)
+
+            self.W_h = L.Linear(n_latent, n_units * n_layers)
+            self.decoder = L.NStepGRU(n_layers, n_embed, n_units, 0.5)
+            self.W = L.Linear(n_units, n_target_vocab)
+            self.embed_y = L.EmbedID(n_target_vocab, n_embed)
+            # if attr:
+            #     self.Wc = L.Linear(2*n_units, n_units)
 
         self.n_layers = n_layers
         self.n_units = n_units
-        self.type_unit = type_unit
+        self.n_embed = n_embed
         self.word_dropout = word_dropout
         self.denoising_rate = denoising_rate
-        self.attr = attr
-        self.loss_type = loss_type
+        self.n_latent = n_latent
+        self.C = 0
+        self.k = 10
+        self.n_target_vocab = n_target_vocab
         
 
     def __call__(self, xs, ys):
         eos = self.xp.array([EOS], 'i')
         
-        xs = [self.denoiseInput(x[::-1], self.denoising_rate) for x in xs]
+        xs = [self.denoiseInput(x[::-1], self.denoising_rate) for x in xs] # denoising
 
+        #ys_d = [self.wordDropout(y, self.word_dropout) for y in ys] # word dropout
         ys_d = [self.denoiseInput(y, self.word_dropout) for y in ys] # word dropout
         ys_in = [F.concat([eos, y], axis=0) for y in ys_d]
         ys_out = [F.concat([y, eos], axis=0) for y in ys]
@@ -87,92 +79,118 @@ class Seq2seq(chainer.Chain):
 
         batch = len(xs)
         # None represents a zero vector in an encoder.
-        if self.type_unit == 'lstm':
-            hx, cx, at = self.encoder(None, None, exs)
-            _, _, os = self.decoder(hx, cx, eys)
-        elif self.type_unit == 'gru':
-            hx, at = self.encoder(None, exs)
-            _, os = self.decoder(hx, eys)
+        hx, at = self.encoder(None, exs) # layer x batch x n_units
+        hx_t = F.transpose(hx, (1,0,2))  # batch x layer x n_units
+        mu = self.W_mu(hx_t) # batch x n_latent
+        ln_var = self.W_ln_var(hx_t)
+        #print(mu.shape)
+        #print(hx_t.shape)
 
-        # os: batch_size x len_of_sentence x hiddensize
-        # at is same
-        # print(len(hx))
-        # print(hx[0].shape)
-        # print(len(at))
-        # print(at[0].shape)
-        
-        # It is faster to concatenate data before calculating loss
-        # because only one matrix multiplication is called.
-        concat_at = F.concat(at, axis=0)
-        concat_os = F.concat(os, axis=0)
+        rec_loss = 0
         concat_ys_out = F.concat(ys_out, axis=0)
-
-        # Attention
-        if self.attr:
-            concat_os_new = self._calculate_attention_layer_output(concat_os, concat_at)
-        else:
-            concat_os_new = concat_os
-
-        # Calcurate Loss
-        if self.loss_type == 'softmax':
-            loss = F.sum(F.softmax_cross_entropy(
-                self.W(concat_os_new), concat_ys_out, reduce='no')) / batch
-        elif self.loss_type == 'sigmoid':
-            loss = F.sum(F.sigmoid_cross_entropy(
-                self.W(concat_os_new), concat_ys_out, reduce='no')) / batch
-
+        for _ in range(self.k):
+            z = F.gaussian(mu, ln_var)
+            z_e = F.expand_dims(z, 2) # batch x n_latent x 1
+            Wz = self.W_h(z_e)        # batch x (layer x unit) 
+            #print('Wz: {}, {}'.format(Wz.shape, type(Wz)))
+            hys = F.split_axis(Wz, self.n_layers, 1) # layer x batch x unit
+            #print('hys, {}'.format([x.shape for x in hys]))
+            c_hy = F.concat([F.expand_dims(hy,0) for hy in hys], 0) # layer x batch x unit
+            #print('c_hy: {}'.format(c_hy.shape))
+            _, os = self.decoder(c_hy, eys)
+            #print(len(os))
+            concat_os = F.concat(os, axis=0)
+            rec_loss += F.sum(F.softmax_cross_entropy(
+                self.W(concat_os), concat_ys_out, reduce='no')) / (self.k * batch)
+        latent_loss = self.C * F.gaussian_kl_divergence(mu, ln_var) / batch
+        
+        loss = rec_loss + latent_loss
+        
         chainer.report({'loss': loss.data}, self)
         n_words = concat_ys_out.shape[0]
         perp = self.xp.exp(loss.data * batch / n_words)
         chainer.report({'perp': perp}, self)
+
         return loss
-
-
-    def _calculate_attention_layer_output(self, c_os, c_at):
-        inner_prod = F.matmul(c_os, c_at, transb=True) # 第2引数を転地
-        weights = F.softmax(inner_prod)
-        contexts = F.matmul(weights, c_at)
-        concatenated = F.concat((contexts, c_os))
-        new_embedded_output = F.tanh(self.Wc(concatenated))
-        return new_embedded_output
     
     
-    def denoiseInput(self, y, rate): # Word dropout or denoising AutoEncoder
+    def denoiseInput(self, y, rate): # Denoising AutoEncoder
         if rate > 0.0:
-            unk = self.xp.array([UNK], 'i')
+            unk = self.xp.array([UNK], 'i') # replace into UNK
             for i in range(len(y)):
                 if random.rand() < rate:
                     y[i] = unk
         return y
 
     
+    def wordDropout(self, y, rate): # Word Dropout
+        if rate > 0.0:
+            for i in range(len(y)):
+                if random.rand() < rate:
+                    noise = self.xp.random.randint(self.n_target_vocab)
+                    y[i] = self.xp.array([noise], 'i') # replace into random word
+        return y
+
+
     def translate(self, xs, max_length=100):
         batch = len(xs)
         with chainer.no_backprop_mode(), chainer.using_config('train', False):
             xs = [x[::-1] for x in xs]
             exs = sequence_embed(self.embed_x, xs)
-            if self.type_unit == 'lstm':
-                h, c, a = self.encoder(None, None, exs)
-            elif self.type_unit == 'gru':
-                h, a = self.encoder(None, exs)
+            h, a = self.encoder(None, exs)
+            
+            h_t = F.transpose(h, (1,0,2))
+            mu = self.W_mu(h_t)
+            ln_var = self.W_ln_var(h_t)        
+            z = F.gaussian(mu, ln_var)
+            z_e = F.expand_dims(z, 2) # batch x n_latent x 1
+            Wz = self.W_h(z_e)
+            hys = F.split_axis(Wz, self.n_layers, 1)
+            c_hy = F.concat([F.expand_dims(hy,0) for hy in hys], 0)            
+
             ys = self.xp.full(batch, EOS, 'i')
             result = []
             for i in range(max_length): # 学習のときとは異なり、1語ずつ計算
                 eys = self.embed_y(ys)
                 eys = F.split_axis(eys, batch, 0)
-                if self.type_unit == 'lstm':
-                    h, c, ys = self.decoder(h, c, eys)                
-                elif self.type_unit == 'gru':
-                    h, ys = self.decoder(h, eys)
-                ca = F.concat(a, axis=0)
-                cys = F.concat(ys, axis=0)
-                
-                # Attention
-                if self.attr:
-                    cys_new = self._calculate_attention_layer_output(cys, ca)
-                else:
-                    cys_new = cys
-                wy = self.W(cys_new)
+                h, ys = self.decoder(c_hy, eys)
+                concat_ys = F.concat(ys, axis=0)
+                wy = self.W(concat_ys)
+                ys = self.xp.argmax(wy.data, axis=1).astype('i')
+                result.append(ys)
+
+        # Using `xp.concatenate(...)` instead of `xp.stack(result)` here to
+        # support NumPy 1.9.
+        result = cuda.to_cpu(
+            self.xp.concatenate([self.xp.expand_dims(x, 0) for x in result]).T)
+
+        # Remove EOS taggs
+        outs = []
+        for y in result:
+            inds = numpy.argwhere(y == EOS)
+            if len(inds) > 0:
+                y = y[:inds[0, 0]]
+            outs.append(y)
+        return outs
+
+
+    def generate(self, batch_size, max_length=100):
+        with chainer.no_backprop_mode(), chainer.using_config('train', False):
+            
+            z = self.xp.random.normal(0.0, 1.0, (batch_size, self.n_latent))\
+                            .astype('f')
+            Wz = self.W_h(z)
+            hys = F.split_axis(Wz, self.n_layers, 1)
+            c_hy = F.concat([F.expand_dims(hy,0) for hy in hys], 0)            
+
+            ys = self.xp.full(batch_size, EOS, 'i')
+            result = []
+            for i in range(max_length): # 学習のときとは異なり、1語ずつ計算
+                eys = self.embed_y(ys)
+                eys = F.split_axis(eys, batch_size, 0)
+                h, ys = self.decoder(c_hy, eys)
+                concat_ys = F.concat(ys, axis=0)
+                wy = self.W(concat_ys)
                 ys = self.xp.argmax(wy.data, axis=1).astype('i')
                 result.append(ys)
 
@@ -322,9 +340,9 @@ def main():
                         help='source sentence list for validation')
     parser.add_argument('--validation-target',
                         help='target sentence list for validation')
-    parser.add_argument('--batchsize', '-b', type=int, default=50,
+    parser.add_argument('--batchsize', '-b', type=int, default=10,
                         help='number of sentence pairs in each mini-batch')
-    parser.add_argument('--epoch', '-e', type=int, default=100,
+    parser.add_argument('--epoch', '-e', type=int, default=50,
                         help='number of sweeps over the dataset to train')
     parser.add_argument('--gpu', '-g', type=int, default=0,
                         help='GPU ID (negative value indicates CPU)')
@@ -351,9 +369,10 @@ def main():
                         'with validation dataset')
     parser.add_argument('--word_dropout', '-w', type=float, default=0.0)
     parser.add_argument('--denoising_rate', '-d', type=float, default=0.0)
-    parser.add_argument('--direction', choices={'uni', 'bi'}, type=str, default='uni') # bi: doesn't work...
-    parser.add_argument('--attention', '-a', type=bool, default=False)
-    parser.add_argument('--loss_type', type=str, default='softmax')
+    parser.add_argument('--n_latent', type=int, default=100)
+    parser.add_argument('--n_embed', type=int, default=512,
+                        help='length of embedding')
+        
     args = parser.parse_args()
 
 
@@ -382,10 +401,10 @@ def main():
     target_words = {i: w for w, i in target_ids.items()}
     source_words = {i: w for w, i in source_ids.items()}
 
-    model = Seq2seq(args.layer, len(source_ids), len(target_ids), args.unit,
-                    args.type_unit, args.word_dropout,
-                    args.denoising_rate, args.direction, args.attention,
-                    args.loss_type)
+
+    model = Seq2seq(args.layer, len(source_ids), len(target_ids),
+                    args.unit, args.n_embed, args.n_latent,
+                    args.type_unit, args.word_dropout, args.denoising_rate)
     if args.gpu >= 0:
         chainer.cuda.get_device(args.gpu).use()
         model.to_gpu(args.gpu)
@@ -424,20 +443,28 @@ def main():
         print('Validation target unknown ratio: %.2f%%' %
               (test_target_unknown * 100))
 
-        @chainer.training.make_extension()
-        def translate(trainer):
-            source, target = test_data[numpy.random.choice(len(test_data))]
-            result = model.translate([model.xp.array(source)])[0]
+        # @chainer.training.make_extension()
+        # def translate(trainer):
+        #     source, target = test_data[numpy.random.choice(len(test_data))]
+        #     result = model.translate([model.xp.array(source)])[0]
 
-            source_sentence = ' '.join([source_words[x] for x in source])
-            target_sentence = ' '.join([target_words[y] for y in target])
-            result_sentence = ' '.join([target_words[y] for y in result])
-            print('#  source : ' + source_sentence)
-            print('#  result : ' + result_sentence)
-            print('#  expect : ' + target_sentence)
+        #     source_sentence = ' '.join([source_words[x] for x in source])
+        #     target_sentence = ' '.join([target_words[y] for y in target])
+        #     result_sentence = ' '.join([target_words[y] for y in result])
+        #     #print('#  source : ' + source_sentence)
+        #     print('#  result : ' + result_sentence)
+        #     print('#  expect : ' + target_sentence)
+
+        # trainer.extend(
+        #     translate, trigger=(args.validation_interval, 'iteration'))
+        @chainer.training.make_extension()
+        def generate(trainer):
+            results = model.generate(5)
+            for i, result in enumerate(results):
+                print('#  result {}: {}'.format(i, ' '.join([source_words[x] for x in result])))
 
         trainer.extend(
-            translate, trigger=(args.validation_interval, 'iteration'))
+            generate, trigger=(args.validation_interval, 'iteration'))
         trainer.extend(
             CalculateBleu(
                 model, test_data, 'bleu', device=args.gpu),
@@ -447,6 +474,20 @@ def main():
                 model, test_data, ['p', 'r', 'f'], device=args.gpu),
             trigger=(args.validation_interval, 'iteration'))
 
+        
+
+    @chainer.training.make_extension()
+    def fit_C(trainer):
+        if updater.epoch < 10:
+            model.C = 0.0
+        else:
+            model.C = 0.06 * (updater.epoch - 10) / args.epoch
+        #print('epoch: {}, C: {},'.format(updater.epoch, model.C))
+
+
+    trainer.extend(fit_C, trigger=(1, 'epoch'))
+
+        
     if args.resume:
         serializers.load_npz(args.resume, model)
     
